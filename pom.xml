@@ -1,0 +1,357 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="
+            http://maven.apache.org/POM/4.0.0
+            https://maven.apache.org/xsd/maven-4.0.0.xsd">
+
+    <modelVersion>4.0.0</modelVersion>
+
+    <!-- =========================================================
+         PROJECT INFORMATION
+         ========================================================= -->
+
+    <parent>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-parent</artifactId>
+        <version>3.5.16</version>
+        <relativePath/>
+    </parent>
+
+    <groupId>com.projectmanagement</groupId>
+    <artifactId>project-management-backend</artifactId>
+    <version>0.0.1-SNAPSHOT</version>
+
+    <name>project-management-backend</name>
+    <description>
+        Jira / Plane style Project Management Backend
+    </description>
+
+    <packaging>jar</packaging>
+
+    <!-- =========================================================
+         PROPERTIES
+         ========================================================= -->
+
+    <properties>
+
+        <!-- Java -->
+        <java.version>21</java.version>
+        <maven.compiler.release>21</maven.compiler.release>
+
+        <!-- JWT -->
+        <jjwt.version>0.12.6</jjwt.version>
+
+        <!-- Web Push -->
+        <webpush.version>5.1.2</webpush.version>
+
+        <!-- Apache HTTP Client required by Web Push -->
+        <httpasyncclient.version>4.1.5</httpasyncclient.version>
+
+        <!-- Bouncy Castle -->
+        <bouncycastle.version>1.85</bouncycastle.version>
+
+        <!-- Database -->
+        <postgresql.version>42.7.13</postgresql.version>
+
+        <!-- Flyway -->
+        <flyway.version>10.20.1</flyway.version>
+
+        <!-- Lombok -->
+        <lombok.version>1.18.34</lombok.version>
+
+        <!-- Test -->
+        <junit.version>5.10.3</junit.version>
+
+    </properties>
+
+    <!-- =========================================================
+         DEPENDENCIES
+         ========================================================= -->
+
+    <dependencies>
+
+        <!-- =====================================================
+             SPRING BOOT
+             ===================================================== -->
+
+        <!-- REST API / Spring MVC -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+
+        <!-- Validation -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-validation</artifactId>
+        </dependency>
+
+        <!-- Spring Data JPA / Hibernate -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-jpa</artifactId>
+        </dependency>
+
+        <!-- Spring Security -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-security</artifactId>
+        </dependency>
+
+        <!-- Email -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-mail</artifactId>
+        </dependency>
+
+
+        <!-- =====================================================
+             DATABASE
+             ===================================================== -->
+
+        <!-- PostgreSQL -->
+        <dependency>
+            <groupId>org.postgresql</groupId>
+            <artifactId>postgresql</artifactId>
+            <scope>runtime</scope>
+        </dependency>
+
+
+        <!-- =====================================================
+             FLYWAY
+             ===================================================== -->
+
+        <dependency>
+            <groupId>org.flywaydb</groupId>
+            <artifactId>flyway-core</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.flywaydb</groupId>
+            <artifactId>flyway-database-postgresql</artifactId>
+        </dependency>
+
+
+        <!-- =====================================================
+             JWT
+             ===================================================== -->
+
+        <dependency>
+            <groupId>io.jsonwebtoken</groupId>
+            <artifactId>jjwt-api</artifactId>
+            <version>${jjwt.version}</version>
+        </dependency>
+
+        <dependency>
+            <groupId>io.jsonwebtoken</groupId>
+            <artifactId>jjwt-impl</artifactId>
+            <version>${jjwt.version}</version>
+            <scope>runtime</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>io.jsonwebtoken</groupId>
+            <artifactId>jjwt-jackson</artifactId>
+            <version>${jjwt.version}</version>
+            <scope>runtime</scope>
+        </dependency>
+
+
+        <!-- =====================================================
+             WEB PUSH
+             ===================================================== -->
+
+        <!--
+            Java Web Push library.
+
+            Version 5.1.2 supports:
+            - VAPID
+            - Web Push payload encryption
+            - Browser Push subscriptions
+        -->
+        <dependency>
+            <groupId>nl.martijndwars</groupId>
+            <artifactId>web-push</artifactId>
+            <version>${webpush.version}</version>
+        </dependency>
+
+        <!--
+            IMPORTANT:
+
+            web-push 5.1.2 declares Apache HttpAsyncClient as
+            runtime dependency.
+
+            PushService.send(Notification) exposes HttpResponse,
+            therefore we explicitly make HttpAsyncClient available
+            at compile time.
+        -->
+        <dependency>
+            <groupId>org.apache.httpcomponents</groupId>
+            <artifactId>httpasyncclient</artifactId>
+            <version>${httpasyncclient.version}</version>
+        </dependency>
+
+
+        <!-- =====================================================
+             BOUNCY CASTLE
+             ===================================================== -->
+        <dependency>
+            <groupId>org.bitbucket.b_c</groupId>
+            <artifactId>jose4j</artifactId>
+            <version>0.9.6</version>
+        </dependency>
+        <!--
+            Cryptography provider required by Web Push.
+        -->
+        <dependency>
+            <groupId>org.bouncycastle</groupId>
+            <artifactId>bcprov-jdk18on</artifactId>
+            <version>${bouncycastle.version}</version>
+        </dependency>
+
+
+        <!-- =====================================================
+             LOMBOK
+             ===================================================== -->
+
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <version>${lombok.version}</version>
+            <optional>true</optional>
+        </dependency>
+
+
+        <!-- =====================================================
+             TESTING
+             ===================================================== -->
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.security</groupId>
+            <artifactId>spring-security-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+
+    </dependencies>
+
+
+    <!-- =========================================================
+         BUILD
+         ========================================================= -->
+
+    <build>
+
+        <plugins>
+
+            <!-- =================================================
+                 SPRING BOOT
+                 ================================================= -->
+
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+
+                <configuration>
+
+                    <excludes>
+                        <exclude>
+                            <groupId>org.projectlombok</groupId>
+                            <artifactId>lombok</artifactId>
+                        </exclude>
+                    </excludes>
+
+                </configuration>
+            </plugin>
+
+
+            <!-- =================================================
+                 COMPILER
+                 ================================================= -->
+
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+
+                <configuration>
+
+                    <release>21</release>
+
+                    <parameters>true</parameters>
+
+                    <annotationProcessorPaths>
+
+                        <path>
+                            <groupId>org.projectlombok</groupId>
+                            <artifactId>lombok</artifactId>
+                            <version>${lombok.version}</version>
+                        </path>
+
+                    </annotationProcessorPaths>
+
+                </configuration>
+            </plugin>
+
+
+            <!-- =================================================
+                 TEST
+                 ================================================= -->
+
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+
+                <configuration>
+                    <useSystemClassLoader>true</useSystemClassLoader>
+                </configuration>
+
+            </plugin>
+
+        </plugins>
+
+    </build>
+
+
+    <!-- =========================================================
+         PROFILES
+         ========================================================= -->
+
+    <profiles>
+
+        <!-- =====================================================
+             DEVELOPMENT
+             ===================================================== -->
+
+        <profile>
+            <id>dev</id>
+
+            <properties>
+                <spring.profiles.active>dev</spring.profiles.active>
+            </properties>
+
+        </profile>
+
+
+        <!-- =====================================================
+             PRODUCTION
+             ===================================================== -->
+
+        <profile>
+            <id>prod</id>
+
+            <properties>
+                <spring.profiles.active>prod</spring.profiles.active>
+            </properties>
+
+        </profile>
+
+    </profiles>
+
+</project>
