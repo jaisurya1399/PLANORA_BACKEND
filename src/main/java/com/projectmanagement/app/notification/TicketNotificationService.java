@@ -1,7 +1,6 @@
 package com.projectmanagement.app.notification;
 
 import java.util.HashSet;
-import java.util.Map;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -15,7 +14,6 @@ import com.projectmanagement.app.notificationscheme.NotificationSchemeRule;
 import com.projectmanagement.app.notificationscheme.NotificationSchemeRuleRepository;
 import com.projectmanagement.app.project.ProjectRole;
 import com.projectmanagement.app.project.ProjectUserRepository;
-import com.projectmanagement.app.realtime.RealtimeEventService;
 import com.projectmanagement.app.ticket.Ticket;
 import com.projectmanagement.app.ticket.TicketStatus;
 import com.projectmanagement.app.ticket.TicketSubscriberRepository;
@@ -29,7 +27,6 @@ public class TicketNotificationService {
         private final UserRepository userRepository;
         private final ProjectUserRepository projectUserRepository;
         private final TicketSubscriberRepository subscriberRepository;
-        private final RealtimeEventService realtimeEvents;
         private final ApplicationEventPublisher eventPublisher;
         private final NotificationPreferenceService preferenceService;
         private final NotificationSchemeRepository notificationSchemeRepository;
@@ -37,7 +34,7 @@ public class TicketNotificationService {
 
         public TicketNotificationService(NotificationRepository notificationRepository, UserRepository userRepository,
                         ProjectUserRepository projectUserRepository, TicketSubscriberRepository subscriberRepository,
-                        RealtimeEventService realtimeEvents, ApplicationEventPublisher eventPublisher,
+                        ApplicationEventPublisher eventPublisher,
                         NotificationPreferenceService preferenceService,
                         NotificationSchemeRepository notificationSchemeRepository,
                         NotificationSchemeRuleRepository notificationSchemeRuleRepository) {
@@ -45,7 +42,6 @@ public class TicketNotificationService {
                 this.userRepository = userRepository;
                 this.projectUserRepository = projectUserRepository;
                 this.subscriberRepository = subscriberRepository;
-                this.realtimeEvents = realtimeEvents;
                 this.eventPublisher = eventPublisher;
                 this.preferenceService = preferenceService;
                 this.notificationSchemeRepository = notificationSchemeRepository;
@@ -159,15 +155,6 @@ public class TicketNotificationService {
                                                         .data(buildData(ticket, message))
                                                         .build());
 
-                        realtimeEvents.publishUser(
-                                        recipient.getId(),
-                                        "notification",
-                                        Map.of(
-                                                        "id", notification.getId().toString(),
-                                                        "type", type,
-                                                        "ticketId", ticket.getId(),
-                                                        "ticketCode", ticket.getCode(),
-                                                        "message", message));
                 }
 
                 // The event is consumed by email and push listeners after commit.
@@ -176,7 +163,7 @@ public class TicketNotificationService {
                 if (schemeEmail || inAppEnabled) {
                         eventPublisher.publishEvent(new TicketNotificationCreatedEvent(
                                         recipient, type, ticket.getId(), ticket.getCode(), message,
-                                        schemeEmail));
+                                        schemeEmail, inAppEnabled));
                 }
         }
 

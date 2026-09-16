@@ -20,6 +20,6 @@ public class UpdateUserRequest {
     @Size(max = 255, message = "Email must not exceed 255 characters")
     private String email;
 
-    @Size(min = 8, max = 255, message = "Password must be between 8 and 255 characters")
+    @Size(min = 10, max = 255, message = "Password must be between 10 and 255 characters")
     private String password;
 }

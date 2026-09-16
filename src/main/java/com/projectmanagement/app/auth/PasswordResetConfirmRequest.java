@@ -13,6 +13,6 @@ public class PasswordResetConfirmRequest {
     @NotBlank
     private String token;
     @NotBlank
-    @Size(min = 12, max = 255)
+    @Size(min = 10, max = 255)
     private String newPassword;
 }

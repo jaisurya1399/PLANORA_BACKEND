@@ -20,6 +20,6 @@ public class SignupRequest {
     private String email;
 
     @NotBlank(message = "Password is required")
-    @Size(min = 12, max = 255, message = "Password must be between 12 and 255 characters")
+    @Size(min = 10, max = 255, message = "Password must be between 10 and 255 characters")
     private String password;
 }
