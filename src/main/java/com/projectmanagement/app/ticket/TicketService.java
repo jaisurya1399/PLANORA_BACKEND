@@ -32,14 +32,15 @@ import com.projectmanagement.app.notification.TicketNotificationService;
 import com.projectmanagement.app.project.Project;
 import com.projectmanagement.app.project.ProjectAccessService;
 import com.projectmanagement.app.project.ProjectRepository;
+import com.projectmanagement.app.project.ProjectUserRepository;
 import com.projectmanagement.app.realtime.RealtimeEventService;
 import com.projectmanagement.app.securityscheme.IssueSecurityLevel;
 import com.projectmanagement.app.securityscheme.IssueSecuritySchemeRepository;
 import com.projectmanagement.app.sprint.Sprint;
-import com.projectmanagement.app.sprint.SprintRepository;
-import com.projectmanagement.app.sprint.SprintStatus;
 import com.projectmanagement.app.sprint.SprintIssueSnapshot;
 import com.projectmanagement.app.sprint.SprintIssueSnapshotRepository;
+import com.projectmanagement.app.sprint.SprintRepository;
+import com.projectmanagement.app.sprint.SprintStatus;
 import com.projectmanagement.app.user.User;
 import com.projectmanagement.app.user.UserRepository;
 import com.projectmanagement.app.workflow.WorkflowService;
@@ -50,6 +51,7 @@ public class TicketService {
 
         private final TicketRepository ticketRepository;
         private final ProjectRepository projectRepository;
+        private final ProjectUserRepository projectUserRepository;
         private final UserRepository userRepository;
         private final TicketStatusRepository ticketStatusRepository;
         private final TicketTypeRepository ticketTypeRepository;
@@ -73,6 +75,7 @@ public class TicketService {
         public TicketService(
                         TicketRepository ticketRepository,
                         ProjectRepository projectRepository,
+                        ProjectUserRepository projectUserRepository,
                         UserRepository userRepository,
                         TicketStatusRepository ticketStatusRepository,
                         TicketTypeRepository ticketTypeRepository,
@@ -95,6 +98,7 @@ public class TicketService {
 
                 this.ticketRepository = ticketRepository;
                 this.projectRepository = projectRepository;
+                this.projectUserRepository = projectUserRepository;
                 this.userRepository = userRepository;
                 this.ticketStatusRepository = ticketStatusRepository;
                 this.ticketTypeRepository = ticketTypeRepository;
@@ -235,11 +239,13 @@ public class TicketService {
         @Transactional(readOnly = true)
         public List<TicketResponse> getMyTasksAll() {
                 Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-                if (authentication == null || !authentication.isAuthenticated() || authentication.getName() == null || authentication.getName().isBlank())
+                if (authentication == null || !authentication.isAuthenticated() || authentication.getName() == null
+                                || authentication.getName().isBlank())
                         throw new RuntimeException("User is not authenticated");
                 User currentUser = userRepository.findByEmail(authentication.getName().trim())
                                 .filter(user -> user.getDeletedAt() == null)
-                                .orElseThrow(() -> new RuntimeException("Current user not found with email: " + authentication.getName()));
+                                .orElseThrow(() -> new RuntimeException(
+                                                "Current user not found with email: " + authentication.getName()));
                 return ticketRepository.findByResponsibleIdAndDeletedAtIsNull(currentUser.getId()).stream()
                                 .filter(this::canView).map(this::toResponse).toList();
         }
@@ -247,11 +253,13 @@ public class TicketService {
         @Transactional(readOnly = true)
         public List<TicketResponse> getMyResolvedTasks() {
                 Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-                if (authentication == null || !authentication.isAuthenticated() || authentication.getName() == null || authentication.getName().isBlank())
+                if (authentication == null || !authentication.isAuthenticated() || authentication.getName() == null
+                                || authentication.getName().isBlank())
                         throw new RuntimeException("User is not authenticated");
                 User currentUser = userRepository.findByEmail(authentication.getName().trim())
                                 .filter(user -> user.getDeletedAt() == null)
-                                .orElseThrow(() -> new RuntimeException("Current user not found with email: " + authentication.getName()));
+                                .orElseThrow(() -> new RuntimeException(
+                                                "Current user not found with email: " + authentication.getName()));
                 return ticketRepository.findResolvedByResponsibleId(currentUser.getId()).stream()
                                 .filter(this::canView).map(this::toResponse).toList();
         }
@@ -565,6 +573,9 @@ public class TicketService {
                                                                         + request.getResponsibleId()));
                 }
 
+                validateTicketParticipantBelongsToProject(owner, project, "Owner");
+                validateTicketParticipantBelongsToProject(responsible, project, "Responsible user");
+
                 TicketStatus status = ticketStatusRepository
                                 .findById(request.getStatusId())
                                 .orElseThrow(() -> new RuntimeException(
@@ -680,6 +691,10 @@ public class TicketService {
                                 .orElseThrow(() -> new RuntimeException(
                                                 "Project not found with id: "
                                                                 + request.getProjectId()));
+                if (!ticket.getProject().getId().equals(project.getId())) {
+                        throw new org.springframework.security.access.AccessDeniedException(
+                                        "A ticket cannot be moved to another project through update");
+                }
                 projectAccessService.requireEditor(project);
                 validateProjectActive(project);
 
@@ -701,6 +716,9 @@ public class TicketService {
                                                         "Responsible user not found with id: "
                                                                         + request.getResponsibleId()));
                 }
+
+                validateTicketParticipantBelongsToProject(owner, project, "Owner");
+                validateTicketParticipantBelongsToProject(responsible, project, "Responsible user");
 
                 if (projectAccessService.isDeveloper(ticket.getProject())) {
                         Long currentUserId = currentUserService.getCurrentUserId();
@@ -962,6 +980,17 @@ public class TicketService {
         // GENERATE TICKET CODE
         // ============================================================
 
+        private void validateTicketParticipantBelongsToProject(User user, Project project, String label) {
+                if (user == null || project == null) {
+                        return;
+                }
+                boolean member = projectUserRepository.existsByProjectIdAndUserId(project.getId(), user.getId());
+                if (!member) {
+                        throw new org.springframework.security.access.AccessDeniedException(
+                                        label + " must be a member of the selected project");
+                }
+        }
+
         private Project getProject(Long projectId) {
                 return projectRepository.findById(projectId)
                                 .orElseThrow(() -> new RuntimeException("Project not found with id: " + projectId));
@@ -1133,7 +1162,8 @@ public class TicketService {
                         snapshotRepository.save(SprintIssueSnapshot.builder()
                                         .sprint(newSprint)
                                         .ticketId(ticket.getId())
-                                        .estimation(ticket.getEstimation() == null ? BigDecimal.ZERO : ticket.getEstimation())
+                                        .estimation(ticket.getEstimation() == null ? BigDecimal.ZERO
+                                                        : ticket.getEstimation())
                                         .resolvedAt(ticket.getResolvedAt())
                                         .finalStatusCategory(ticket.getStatus() == null
                                                         ? TicketStatusCategory.TODO

@@ -8,36 +8,46 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 public interface UserRoleRepository
-        extends JpaRepository<UserRole, UserRoleId> {
+                extends JpaRepository<UserRole, UserRoleId> {
 
-    List<UserRole> findByUserId(Long userId);
+        List<UserRole> findByUserId(Long userId);
 
-    List<UserRole> findByRoleId(Long roleId);
+        List<UserRole> findByRoleId(Long roleId);
 
-    Optional<UserRole> findByUserIdAndRoleId(
-            Long userId,
-            Long roleId);
+        Optional<UserRole> findByUserIdAndRoleId(
+                        Long userId,
+                        Long roleId);
 
-    boolean existsByUserIdAndRoleId(
-            Long userId,
-            Long roleId);
+        boolean existsByUserIdAndRoleId(
+                        Long userId,
+                        Long roleId);
 
-    long countByUserId(Long userId);
+        long countByUserId(Long userId);
 
-    long countByRoleId(Long roleId);
+        long countByRoleId(Long roleId);
 
-    void deleteByUserId(Long userId);
+        void deleteByUserId(Long userId);
 
-    void deleteByRoleId(Long roleId);
+        void deleteByRoleId(Long roleId);
 
-    @Query("""
-            SELECT DISTINCT ur
-            FROM UserRole ur
-            JOIN FETCH ur.role r
-            LEFT JOIN FETCH r.rolePermissions rp
-            LEFT JOIN FETCH rp.permission p
-            WHERE ur.user.id = :userId
-            """)
-    List<UserRole> findUserRolesWithPermissions(
-            @Param("userId") Long userId);
+        @Query("""
+                        SELECT DISTINCT ur
+                        FROM UserRole ur
+                        JOIN FETCH ur.role r
+                        LEFT JOIN FETCH r.rolePermissions rp
+                        LEFT JOIN FETCH rp.permission p
+                        WHERE ur.user.id = :userId
+                        """)
+        List<UserRole> findUserRolesWithPermissions(
+                        @Param("userId") Long userId);
+
+        @Query("""
+                        SELECT DISTINCT ur.user
+                        FROM UserRole ur
+                        JOIN ur.role r
+                        WHERE UPPER(r.name) IN ('ADMIN', 'SYSTEM_ADMIN')
+                          AND LOWER(r.guardName) = 'web'
+                        """)
+        List<com.projectmanagement.app.user.User> findSystemAdminUsers();
+
 }

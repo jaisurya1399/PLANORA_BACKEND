@@ -22,7 +22,7 @@ FROM roles r
 CROSS JOIN users u
 WHERE r.name = 'ADMIN'
   AND r.guard_name = 'web'
-  AND u.email = 'admin@gmail.com'
+  AND u.email = 'jaisurya1399@gmail.com'
   AND NOT EXISTS (
       SELECT 1
       FROM model_has_roles mhr

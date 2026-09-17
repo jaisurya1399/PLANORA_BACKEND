@@ -92,12 +92,32 @@ public class ProjectManagementService {
         // comments,
         // attachments, audit history, favorites, or other user-generated work.
         if (Boolean.TRUE.equals(request.getCopyMembers())) {
-            for (ProjectUser member : projectUserRepository.findByProjectId(sourceId)) {
-                if (projectUserRepository.existsByProjectIdAndUserId(saved.getId(), member.getUser().getId()))
-                    continue;
-                projectUserRepository.save(ProjectUser.builder().project(saved).user(member.getUser())
-                        .role(member.getRole()).responsibilityRole(member.getResponsibilityRole())
-                        .availabilitySelfUpdateOpen(Boolean.FALSE).build());
+            java.util.List<ProjectUser> sourceMembers = projectUserRepository.findByProjectId(sourceId);
+
+            // Copy non-admin memberships first. Admin membership is handled below
+            // so the clone can never exceed the 1-2 Project Admin rule.
+            sourceMembers.stream()
+                    .filter(member -> !ProjectRole.PROJECT_ADMIN.name().equalsIgnoreCase(member.getRole()))
+                    .forEach(member -> {
+                        if (!projectUserRepository.existsByProjectIdAndUserId(saved.getId(),
+                                member.getUser().getId())) {
+                            projectUserRepository.save(ProjectUser.builder().project(saved).user(member.getUser())
+                                    .role(member.getRole()).responsibilityRole(null)
+                                    .availabilitySelfUpdateOpen(Boolean.FALSE).build());
+                        }
+                    });
+
+            java.util.List<ProjectUser> sourceAdmins = sourceMembers.stream()
+                    .filter(member -> ProjectRole.PROJECT_ADMIN.name().equalsIgnoreCase(member.getRole()))
+                    .toList();
+            for (ProjectUser member : sourceAdmins) {
+                if (member.getUser().getId().equals(owner.getId()) || sourceAdmins.indexOf(member) == 0) {
+                    if (!projectUserRepository.existsByProjectIdAndUserId(saved.getId(), member.getUser().getId())) {
+                        projectUserRepository.save(ProjectUser.builder().project(saved).user(member.getUser())
+                                .role(ProjectRole.PROJECT_ADMIN.name()).availabilitySelfUpdateOpen(Boolean.FALSE)
+                                .build());
+                    }
+                }
             }
         }
 

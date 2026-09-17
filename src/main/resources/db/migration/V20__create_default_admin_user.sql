@@ -11,14 +11,14 @@ INSERT INTO users (
 )
 SELECT
     'Jai Surya',
-    'admin@gmail.com',
+    'jaisurya1399@gmail.com',
     '$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy',
     CURRENT_TIMESTAMP,
     CURRENT_TIMESTAMP
 WHERE NOT EXISTS (
     SELECT 1
     FROM users
-    WHERE email = 'admin@gmail.com'
+    WHERE email = 'jaisurya1399@gmail.com'
 );
 
 -- ============================================================
@@ -38,7 +38,7 @@ FROM roles r
 CROSS JOIN users u
 WHERE r.name = 'ADMIN'
   AND r.guard_name = 'web'
-  AND u.email = 'admin@gmail.com'
+  AND u.email = 'jaisurya1399@gmail.com'
   AND NOT EXISTS (
       SELECT 1
       FROM model_has_roles mhr

@@ -6,13 +6,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.projectmanagement.app.audit.AuditService;
-import com.projectmanagement.app.role.Role;
-import com.projectmanagement.app.role.RoleRepository;
 import com.projectmanagement.app.user.User;
 import com.projectmanagement.app.user.UserRepository;
-import com.projectmanagement.app.userrole.UserRole;
-import com.projectmanagement.app.userrole.UserRoleId;
-import com.projectmanagement.app.userrole.UserRoleRepository;
 
 @Service
 @Transactional
@@ -23,25 +18,19 @@ public class ProjectUserService {
         private final ProjectRepository projectRepository;
         private final ProjectAccessService projectAccessService;
         private final AuditService auditService;
-        private final RoleRepository roleRepository;
-        private final UserRoleRepository userRoleRepository;
 
         public ProjectUserService(
                         ProjectUserRepository projectUserRepository,
                         ProjectRepository projectRepository,
                         UserRepository userRepository,
                         ProjectAccessService projectAccessService,
-                        AuditService auditService,
-                        RoleRepository roleRepository,
-                        UserRoleRepository userRoleRepository) {
+                        AuditService auditService) {
 
                 this.projectUserRepository = projectUserRepository;
                 this.projectRepository = projectRepository;
                 this.userRepository = userRepository;
                 this.projectAccessService = projectAccessService;
                 this.auditService = auditService;
-                this.roleRepository = roleRepository;
-                this.userRoleRepository = userRoleRepository;
         }
 
         // -------------------------------------------------------------------------
@@ -64,6 +53,7 @@ public class ProjectUserService {
                                 .orElseThrow(() -> new RuntimeException(
                                                 "Project user not found with id: " + id));
 
+                projectAccessService.requireView(projectUser.getProject());
                 return toResponse(projectUser);
         }
 
@@ -136,10 +126,17 @@ public class ProjectUserService {
 
                 Project project = getProject(request.getProjectId());
 
-                projectAccessService.requireManager(project);
-
                 validateUser(request.getUserId());
-                validateRequestRole(request);
+                String normalizedRole = normalizeRequestedRole(request);
+
+                // Project membership and project-role assignment are project-level
+                // operations. A Project Admin can add/change Project Admin, Team Lead,
+                // and Developer memberships in their own project, subject to the
+                // 1-2 Project Admin cardinality rule. System Admin may do the same
+                // when acting as a system administrator.
+                projectAccessService.requireProjectMembershipAdministration(project);
+
+                validateAdminCardinality(project.getId(), normalizedRole, null);
 
                 if (projectUserRepository.existsByProjectIdAndUserId(
                                 request.getProjectId(),
@@ -154,13 +151,12 @@ public class ProjectUserService {
                 ProjectUser projectUser = ProjectUser.builder()
                                 .user(user)
                                 .project(project)
-                                .role(normalizeRole(request.getRole().name()))
-                                .responsibilityRole(normalizeResponsibility(request))
+                                .role(normalizedRole)
+                                .responsibilityRole(null)
                                 .availabilitySelfUpdateOpen(Boolean.FALSE)
                                 .build();
 
                 ProjectUser saved = projectUserRepository.save(projectUser);
-                syncApplicationRoleForUser(user.getId());
                 auditService.record(project, null, "PROJECT_MEMBER_ADDED", "PROJECT_USER", saved.getId(),
                                 java.util.Map.of("userId", user.getId(), "role", saved.getRole(),
                                                 "responsibilityRole", saved.getResponsibilityRole() == null ? ""
@@ -183,16 +179,17 @@ public class ProjectUserService {
                                                 "Project user not found with id: " + id));
 
                 Project oldProject = projectUser.getProject();
-                Long oldUserId = projectUser.getUser() != null ? projectUser.getUser().getId() : null;
-
-                projectAccessService.requireManager(oldProject);
+                Long oldProjectId = oldProject.getId();
 
                 Project newProject = getProject(request.getProjectId());
 
-                projectAccessService.requireManager(newProject);
-
                 validateUser(request.getUserId());
-                validateRequestRole(request);
+                String normalizedRole = normalizeRequestedRole(request);
+                // Project Admins can change memberships and roles only within
+                // projects they administer. Moving a membership between projects
+                // requires administration access to both projects.
+                projectAccessService.requireProjectMembershipAdministration(oldProject);
+                projectAccessService.requireProjectMembershipAdministration(newProject);
 
                 boolean userChanged = !projectUser.getUser().getId()
                                 .equals(request.getUserId());
@@ -216,11 +213,16 @@ public class ProjectUserService {
 
                 projectUser.setProject(newProject);
 
-                projectUser.setRole(
-                                normalizeRole(request.getRole().name()));
+                String oldRole = projectUser.getRole();
+                if (ProjectRole.PROJECT_ADMIN.name().equalsIgnoreCase(oldRole)
+                                && (!ProjectRole.PROJECT_ADMIN.name().equalsIgnoreCase(normalizedRole)
+                                                || projectChanged)) {
+                        ensureNotLastProjectAdmin(oldProjectId, projectUser.getId());
+                }
+                validateAdminCardinality(newProject.getId(), normalizedRole, id);
 
-                projectUser.setResponsibilityRole(
-                                normalizeResponsibility(request));
+                projectUser.setRole(normalizedRole);
+                projectUser.setResponsibilityRole(null);
 
                 /*
                  * Preserve the current availability submission setting.
@@ -234,12 +236,10 @@ public class ProjectUserService {
                 }
 
                 ProjectUser saved = projectUserRepository.save(projectUser);
-                if (oldUserId != null && !oldUserId.equals(saved.getUser().getId())) {
-                        syncApplicationRoleForUser(oldUserId);
-                }
-                syncApplicationRoleForUser(saved.getUser().getId());
                 auditService.record(newProject, null, "PROJECT_MEMBER_UPDATED", "PROJECT_USER", saved.getId(),
-                                java.util.Map.of("userId", saved.getUser().getId(), "role", saved.getRole(),
+                                java.util.Map.of("userId", saved.getUser().getId(), "oldRole",
+                                                oldRole == null ? "" : oldRole,
+                                                "newRole", saved.getRole(),
                                                 "responsibilityRole", saved.getResponsibilityRole() == null ? ""
                                                                 : saved.getResponsibilityRole()));
                 return toResponse(saved);
@@ -320,18 +320,17 @@ public class ProjectUserService {
                                                 "Project user not found with id: "
                                                                 + id));
 
-                projectAccessService.requireManager(
-                                projectUser.getProject());
+                projectAccessService.requireProjectMembershipAdministration(projectUser.getProject());
 
                 Long userId = projectUser.getUser() != null ? projectUser.getUser().getId() : null;
+                if (ProjectRole.PROJECT_ADMIN.name().equalsIgnoreCase(projectUser.getRole())) {
+                        ensureNotLastProjectAdmin(projectUser.getProject().getId(), projectUser.getId());
+                }
                 auditService.record(projectUser.getProject(), null, "PROJECT_MEMBER_REMOVED", "PROJECT_USER",
                                 projectUser.getId(),
                                 java.util.Map.of("userId", projectUser.getUser().getId(), "role",
                                                 projectUser.getRole()));
                 projectUserRepository.delete(projectUser);
-                if (userId != null) {
-                        syncApplicationRoleForUser(userId);
-                }
         }
 
         public void deleteProjectUsersByProject(
@@ -339,18 +338,13 @@ public class ProjectUserService {
 
                 Project project = getProject(projectId);
 
-                projectAccessService.requireManager(project);
+                projectAccessService.requireProjectMembershipAdministration(project);
 
-                List<Long> affectedUserIds = projectUserRepository.findByProjectId(projectId)
-                                .stream()
-                                .map(ProjectUser::getUser)
-                                .filter(java.util.Objects::nonNull)
-                                .map(User::getId)
-                                .distinct()
-                                .toList();
-
-                projectUserRepository.deleteByProjectId(projectId);
-                affectedUserIds.forEach(this::syncApplicationRoleForUser);
+                // Preserve all Project Admin memberships so the project can never
+                // be left without an administrator.
+                projectUserRepository.findByProjectId(projectId).stream()
+                                .filter(member -> !ProjectRole.PROJECT_ADMIN.name().equalsIgnoreCase(member.getRole()))
+                                .forEach(projectUserRepository::delete);
         }
 
         public void deleteProjectUsersByUser(Long userId) {
@@ -362,7 +356,6 @@ public class ProjectUserService {
                  * controller/global permission.
                  */
                 projectUserRepository.deleteByUserId(userId);
-                syncApplicationRoleForUser(userId);
         }
 
         // -------------------------------------------------------------------------
@@ -385,62 +378,6 @@ public class ProjectUserService {
                 validateUser(userId);
 
                 return projectUserRepository.countByUserId(userId);
-        }
-
-        // -------------------------------------------------------------------------
-        // APPLICATION ROLE SYNCHRONIZATION
-        // -------------------------------------------------------------------------
-
-        /**
-         * Synchronizes project MEMBER responsibilities with matching application
-         * roles. ADMIN and other unrelated system roles are never touched.
-         * A role is kept while at least one project membership still requires it.
-         */
-        private void syncApplicationRoleForUser(Long userId) {
-                if (userId == null) {
-                        return;
-                }
-
-                java.util.Set<String> desired = projectUserRepository.findByUserId(userId)
-                                .stream()
-                                .filter(java.util.Objects::nonNull)
-                                .filter(p -> ProjectRole.MEMBER.name().equalsIgnoreCase(p.getRole()))
-                                .map(ProjectUser::getResponsibilityRole)
-                                .filter(r -> r != null && !r.isBlank())
-                                .map(r -> r.trim().toUpperCase())
-                                .collect(java.util.stream.Collectors.toSet());
-
-                java.util.Set<String> managed = java.util.Arrays.stream(MemberResponsibility.values())
-                                .map(Enum::name)
-                                .collect(java.util.stream.Collectors.toSet());
-
-                for (Role role : roleRepository.findAll()) {
-                        if (role == null || role.getName() == null) {
-                                continue;
-                        }
-
-                        String roleName = role.getName().trim().toUpperCase();
-                        if (!managed.contains(roleName)) {
-                                continue;
-                        }
-
-                        boolean shouldHave = desired.contains(roleName);
-                        boolean has = userRoleRepository.existsByUserIdAndRoleId(userId, role.getId());
-
-                        if (shouldHave && !has) {
-                                User user = getUser(userId);
-                                UserRoleId id = new UserRoleId(role.getId(), userId, UserRole.USER_MODEL_TYPE);
-                                userRoleRepository.save(UserRole.builder()
-                                                .id(id)
-                                                .user(user)
-                                                .role(role)
-                                                .modelType(UserRole.USER_MODEL_TYPE)
-                                                .build());
-                        } else if (!shouldHave && has) {
-                                userRoleRepository.findByUserIdAndRoleId(userId, role.getId())
-                                                .ifPresent(userRoleRepository::delete);
-                        }
-                }
         }
 
         // -------------------------------------------------------------------------
@@ -475,82 +412,89 @@ public class ProjectUserService {
                 }
         }
 
-        private void validateRequestRole(
-                        ProjectUserRequest request) {
-
-                ProjectRole role = request.getRole();
-
-                /*
-                 * MEMBER must have a responsibility.
-                 *
-                 * If frontend does not send one,
-                 * default to Developer.
-                 */
-                if (role == ProjectRole.MEMBER
-                                && request.getResponsibilityRole() == null) {
-
-                        request.setResponsibilityRole(
-                                        MemberResponsibility.DEVELOPER);
-                }
-
-                /*
-                 * PROJECT_ADMIN and VIEWER cannot have
-                 * a member responsibility.
-                 */
-                if (role != ProjectRole.MEMBER
-                                && request.getResponsibilityRole() != null) {
-
-                        throw new IllegalArgumentException(
-                                        "Responsibility is only allowed for MEMBER access");
-                }
-        }
-
-        private String normalizeResponsibility(
-                        ProjectUserRequest request) {
-
-                if (request.getRole() != ProjectRole.MEMBER) {
-                        return null;
-                }
-
-                MemberResponsibility responsibility = request.getResponsibilityRole();
-
-                if (responsibility == null) {
-                        return MemberResponsibility.DEVELOPER.name();
-                }
-
-                return responsibility.name()
-                                .trim()
-                                .toUpperCase();
-        }
-
         private String normalizeRole(String role) {
-
-                if (role == null || role.isBlank()) {
-                        throw new IllegalArgumentException(
-                                        "Project role is required");
+                if (role == null || role.trim().isEmpty()) {
+                        throw new IllegalArgumentException("Project role is required");
                 }
 
                 String normalized = role.trim().toUpperCase();
 
-                /*
-                 * Backward compatibility:
-                 *
-                 * Old project role ADMIN
-                 * becomes PROJECT_ADMIN.
-                 */
-                if ("ADMIN".equals(normalized)) {
-                        return ProjectRole.PROJECT_ADMIN.name();
+                switch (normalized) {
+                        case "MEMBER":
+                                return ProjectRole.DEVELOPER.name();
+                        case "TEAMLEAD":
+                        case "TEAM_LEAD":
+                                return ProjectRole.TEAM_LEAD.name();
+                        case "PROJECTADMIN":
+                        case "PROJECT_ADMIN":
+                                return ProjectRole.PROJECT_ADMIN.name();
+                        case "DEVELOPER":
+                                return ProjectRole.DEVELOPER.name();
+                        case "VIEWER":
+                                return ProjectRole.VIEWER.name();
+                        default:
+                                try {
+                                        return ProjectRole.valueOf(normalized).name();
+                                } catch (IllegalArgumentException ex) {
+                                        throw new IllegalArgumentException(
+                                                        "Invalid project role: " + role);
+                                }
+                }
+        }
+
+        private String normalizeRequestedRole(ProjectUserRequest request) {
+                ProjectRole requested = request.getRole();
+                if (requested == null) {
+                        throw new IllegalArgumentException("Project role is required");
                 }
 
-                try {
-                        return ProjectRole
-                                        .valueOf(normalized)
-                                        .name();
+                // Backward compatibility: old MEMBER + responsibility values are
+                // converted into the new first-class project roles.
+                if (requested == ProjectRole.MEMBER) {
+                        if (request.getResponsibilityRole() == MemberResponsibility.TEAM_LEAD) {
+                                return ProjectRole.TEAM_LEAD.name();
+                        }
+                        return ProjectRole.DEVELOPER.name();
+                }
 
-                } catch (IllegalArgumentException ex) {
+                if (requested == ProjectRole.VIEWER) {
+                        return ProjectRole.VIEWER.name();
+                }
 
-                        throw new IllegalArgumentException(
-                                        "Invalid project role: " + role);
+                return requested.name();
+        }
+
+        private void validateAdminCardinality(Long projectId, String role, Long excludedId) {
+                if (!ProjectRole.PROJECT_ADMIN.name().equalsIgnoreCase(role)) {
+                        return;
+                }
+                long count = projectUserRepository.countByProjectIdAndRole(
+                                projectId, ProjectRole.PROJECT_ADMIN.name());
+                if (excludedId != null) {
+                        ProjectUser existing = projectUserRepository.findById(excludedId).orElse(null);
+                        if (existing != null && projectId.equals(existing.getProject().getId())
+                                        && ProjectRole.PROJECT_ADMIN.name().equalsIgnoreCase(existing.getRole())) {
+                                count--;
+                        }
+                }
+                if (count >= 2) {
+                        throw new org.springframework.security.access.AccessDeniedException(
+                                        "A project can have a maximum of 2 Project Admins");
+                }
+        }
+
+        private void ensureNotLastProjectAdmin(Long projectId, Long excludedId) {
+                long count = projectUserRepository.countByProjectIdAndRole(
+                                projectId, ProjectRole.PROJECT_ADMIN.name());
+                if (excludedId != null) {
+                        ProjectUser existing = projectUserRepository.findById(excludedId).orElse(null);
+                        if (existing != null && ProjectRole.PROJECT_ADMIN.name().equalsIgnoreCase(existing.getRole())) {
+                                count--;
+                        }
+                }
+                if (count < 1) {
+                        throw new org.springframework.security.access.AccessDeniedException(
+                                        "A project must always have at least 1 Project Admin. Assign another Project Admin first.");
                 }
         }
 
@@ -647,4 +591,5 @@ public class ProjectUserService {
                                                 projectUser.getUpdatedAt())
                                 .build();
         }
+
 }

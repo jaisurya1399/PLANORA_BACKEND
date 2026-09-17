@@ -28,6 +28,7 @@ public class TimeSheetService {
         @Transactional(readOnly = true)
         public List<TimeSheetResponse> getAll() {
 
+                rejectSystemAdmin();
                 return timeSheetRepository.findAll()
                                 .stream()
                                 .map(this::mapToResponse)
@@ -37,6 +38,7 @@ public class TimeSheetService {
         @Transactional(readOnly = true)
         public List<TimeSheetResponse> getActive() {
 
+                rejectSystemAdmin();
                 return timeSheetRepository.findByDeletedAtIsNull()
                                 .stream()
                                 .map(this::mapToResponse)
@@ -46,6 +48,7 @@ public class TimeSheetService {
         @Transactional(readOnly = true)
         public TimeSheetResponse getById(Long id) {
 
+                rejectSystemAdmin();
                 TimeSheet timeSheet = timeSheetRepository.findById(id)
                                 .orElseThrow(() -> new RuntimeException(
                                                 "Time sheet not found with id: " + id));
@@ -56,6 +59,7 @@ public class TimeSheetService {
         @Transactional(readOnly = true)
         public List<TimeSheetResponse> getByUser(Long userId) {
 
+                rejectSystemAdmin();
                 validateUser(userId);
 
                 return timeSheetRepository
@@ -68,6 +72,7 @@ public class TimeSheetService {
         @Transactional(readOnly = true)
         public List<TimeSheetResponse> getByProject(Long projectId) {
 
+                rejectSystemAdmin();
                 validateProject(projectId);
 
                 return timeSheetRepository
@@ -82,6 +87,7 @@ public class TimeSheetService {
                         Long userId,
                         Long projectId) {
 
+                rejectSystemAdmin();
                 validateUser(userId);
                 validateProject(projectId);
 
@@ -97,6 +103,7 @@ public class TimeSheetService {
         @Transactional(readOnly = true)
         public List<TimeSheetResponse> searchByTask(String task) {
 
+                rejectSystemAdmin();
                 return timeSheetRepository
                                 .findByTaskContainingIgnoreCase(task)
                                 .stream()
@@ -107,6 +114,7 @@ public class TimeSheetService {
 
         public TimeSheetResponse create(TimeSheetRequest request) {
 
+                rejectSystemAdmin();
                 User user = userRepository
                                 .findById(request.getUserId())
                                 .orElseThrow(() -> new RuntimeException(
@@ -144,6 +152,7 @@ public class TimeSheetService {
                         Long id,
                         TimeSheetRequest request) {
 
+                rejectSystemAdmin();
                 TimeSheet timeSheet = timeSheetRepository.findById(id)
                                 .orElseThrow(() -> new RuntimeException(
                                                 "Time sheet not found with id: " + id));
@@ -182,6 +191,7 @@ public class TimeSheetService {
 
         public void softDelete(Long id) {
 
+                rejectSystemAdmin();
                 TimeSheet timeSheet = timeSheetRepository.findById(id)
                                 .orElseThrow(() -> new RuntimeException(
                                                 "Time sheet not found with id: " + id));
@@ -198,6 +208,7 @@ public class TimeSheetService {
 
         public void restore(Long id) {
 
+                rejectSystemAdmin();
                 TimeSheet timeSheet = timeSheetRepository.findById(id)
                                 .orElseThrow(() -> new RuntimeException(
                                                 "Time sheet not found with id: " + id));
@@ -209,6 +220,7 @@ public class TimeSheetService {
 
         public void permanentDelete(Long id) {
 
+                rejectSystemAdmin();
                 if (!timeSheetRepository.existsById(id)) {
                         throw new RuntimeException(
                                         "Time sheet not found with id: " + id);
@@ -219,6 +231,7 @@ public class TimeSheetService {
 
         public void deleteByUser(Long userId) {
 
+                rejectSystemAdmin();
                 validateUser(userId);
 
                 timeSheetRepository.deleteByUserId(userId);
@@ -226,6 +239,7 @@ public class TimeSheetService {
 
         public void deleteByProject(Long projectId) {
 
+                rejectSystemAdmin();
                 validateProject(projectId);
 
                 timeSheetRepository.deleteByProjectId(projectId);
@@ -234,6 +248,7 @@ public class TimeSheetService {
         @Transactional(readOnly = true)
         public long countByUser(Long userId) {
 
+                rejectSystemAdmin();
                 validateUser(userId);
 
                 return timeSheetRepository.countByUserId(userId);
@@ -242,6 +257,7 @@ public class TimeSheetService {
         @Transactional(readOnly = true)
         public long countByProject(Long projectId) {
 
+                rejectSystemAdmin();
                 validateProject(projectId);
 
                 return timeSheetRepository.countByProjectId(projectId);
@@ -252,6 +268,7 @@ public class TimeSheetService {
                         Long userId,
                         Long projectId) {
 
+                rejectSystemAdmin();
                 validateUser(userId);
                 validateProject(projectId);
 
@@ -272,6 +289,17 @@ public class TimeSheetService {
                 if (!projectRepository.existsById(projectId)) {
                         throw new RuntimeException(
                                         "Project not found with id: " + projectId);
+                }
+        }
+
+        private void rejectSystemAdmin() {
+                var authentication = org.springframework.security.core.context.SecurityContextHolder
+                                .getContext().getAuthentication();
+                boolean systemAdmin = authentication != null && authentication.getAuthorities().stream()
+                                .anyMatch(a -> "ROLE_ADMIN".equals(a.getAuthority()));
+                if (systemAdmin) {
+                        throw new org.springframework.security.access.AccessDeniedException(
+                                        "System Admin does not have project time tracking access");
                 }
         }
 

@@ -12,9 +12,12 @@ import com.projectmanagement.app.meeting.MeetingRepository;
 import com.projectmanagement.app.project.Project;
 import com.projectmanagement.app.project.ProjectAccessService;
 import com.projectmanagement.app.project.ProjectRepository;
+import com.projectmanagement.app.project.ProjectUserRepository;
 import com.projectmanagement.app.realtime.RealtimeEventService;
 import com.projectmanagement.app.user.User;
 import com.projectmanagement.app.user.UserRepository;
+import com.projectmanagement.app.user.UserResponse;
+import com.projectmanagement.app.userrole.UserRoleRepository;
 
 @Service
 @Transactional
@@ -26,10 +29,13 @@ public class ChatService {
     private final RealtimeEventService events;
     private final UserRepository users;
     private final MeetingRepository meetings;
+    private final ProjectUserRepository projectUsers;
+    private final UserRoleRepository userRoles;
 
     public ChatService(ChatMessageRepository repo, CurrentUserService current, ProjectRepository projects,
             ProjectAccessService access, RealtimeEventService events, UserRepository users,
-            MeetingRepository meetings) {
+            MeetingRepository meetings, ProjectUserRepository projectUsers,
+            UserRoleRepository userRoles) {
         this.repo = repo;
         this.current = current;
         this.projects = projects;
@@ -37,6 +43,49 @@ public class ChatService {
         this.events = events;
         this.users = users;
         this.meetings = meetings;
+        this.projectUsers = projectUsers;
+        this.userRoles = userRoles;
+    }
+
+    /**
+     * Direct-chat directory for a selected project:
+     * System Admins are always available, plus all active users assigned to
+     * the selected project. The current user is excluded by the UI.
+     */
+    @Transactional(readOnly = true)
+    public List<UserResponse> directUsers(Long projectId) {
+        Project project = projects.findById(projectId)
+                .orElseThrow(() -> new RuntimeException("Project not found"));
+        access.requireView(project);
+
+        java.util.Map<Long, User> result = new java.util.LinkedHashMap<>();
+
+        userRoles.findSystemAdminUsers().forEach(u -> {
+            if (u != null && u.getDeletedAt() == null) {
+                result.put(u.getId(), u);
+            }
+        });
+
+        projectUsers.findByProjectIdAndUser_DeletedAtIsNull(projectId).forEach(member -> {
+            if (member.getUser() != null && member.getUser().getDeletedAt() == null) {
+                result.put(member.getUser().getId(), member.getUser());
+            }
+        });
+
+        return result.values().stream()
+                .map(u -> UserResponse.builder()
+                        .id(u.getId())
+                        .name(u.getName())
+                        .email(u.getEmail())
+                        .emailVerifiedAt(u.getEmailVerifiedAt())
+                        .createdAt(u.getCreatedAt())
+                        .updatedAt(u.getUpdatedAt())
+                        .hasProfileImage(u.getProfileImageData() != null && u.getProfileImageData().length > 0)
+                        .build())
+                .sorted(java.util.Comparator.comparing(
+                        UserResponse::getName,
+                        java.util.Comparator.nullsLast(String.CASE_INSENSITIVE_ORDER)))
+                .toList();
     }
 
     public List<ChatMessageResponse> direct(Long other) {
@@ -73,7 +122,7 @@ public class ChatService {
 
     public ChatMessageResponse sendRoom(Long projectId, ChatMessageRequest req) {
         Project p = projects.findById(projectId).orElseThrow(() -> new RuntimeException("Project not found"));
-        access.requireEditor(p);
+        access.requireView(p);
         ChatMessage m = ChatMessage.builder().roomType("PROJECT").roomId(projectId).senderId(current.getCurrentUserId())
                 .content(req.getContent().trim()).build();
         ChatMessageResponse out = to(repo.save(m));
@@ -83,7 +132,7 @@ public class ChatService {
 
     public ChatMessageResponse sendMeeting(Long meetingId, ChatMessageRequest req) {
         Meeting meeting = meetings.findById(meetingId).orElseThrow(() -> new RuntimeException("Meeting not found"));
-        access.requireEditor(meeting.getProject());
+        access.requireView(meeting.getProject());
         ChatMessage m = ChatMessage.builder().roomType("MEETING").roomId(meetingId).senderId(current.getCurrentUserId())
                 .content(req.getContent().trim()).build();
         ChatMessageResponse out = to(repo.save(m));

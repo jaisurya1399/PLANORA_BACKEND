@@ -3,4 +3,4 @@
 UPDATE users
 SET password = NULL,
     updated_at = CURRENT_TIMESTAMP
-WHERE email = 'admin@gmail.com';
+WHERE email = 'jaisurya1399@gmail.com';

@@ -190,6 +190,16 @@ public class ProjectService {
         }
 
         // ============================================================
+        // CURRENT PROJECT ACCESS
+        // ============================================================
+
+        @Transactional(readOnly = true)
+        public ProjectAccessResponse getCurrentProjectAccess(Long id) {
+                validateId(id);
+                return projectAccessService.getCurrentAccess(getProjectEntityById(id));
+        }
+
+        // ============================================================
         // CREATE PROJECT
         // ============================================================
 
@@ -212,6 +222,16 @@ public class ProjectService {
                 }
 
                 User owner = getUserById(request.getOwnerId());
+                java.util.List<Long> projectAdminIds = request.getProjectAdminIds() == null
+                                ? java.util.List.of(owner.getId())
+                                : request.getProjectAdminIds().stream().distinct().toList();
+
+                if (projectAdminIds.isEmpty() || projectAdminIds.size() > 2) {
+                        throw new IllegalArgumentException("A project must have 1 or 2 Project Admins");
+                }
+                if (!projectAdminIds.contains(owner.getId())) {
+                        throw new IllegalArgumentException("Project owner must also be a Project Admin");
+                }
 
                 ProjectStatus status = getStatusById(request.getStatusId());
 
@@ -230,18 +250,21 @@ public class ProjectService {
 
                 Project savedProject = projectRepository.save(project);
 
-                // The creator/owner is the project administrator for the new project.
-                if (!projectUserRepository.existsByProjectIdAndUserId(savedProject.getId(), owner.getId())) {
+                // Create the selected project-admin memberships atomically with the project.
+                for (Long adminId : projectAdminIds) {
+                        User admin = getUserById(adminId);
                         projectUserRepository.save(ProjectUser.builder()
                                         .project(savedProject)
-                                        .user(owner)
+                                        .user(admin)
                                         .role(ProjectRole.PROJECT_ADMIN.name())
+                                        .availabilitySelfUpdateOpen(Boolean.FALSE)
                                         .build());
                 }
 
                 auditService.record(savedProject, null, "PROJECT_CREATED", "PROJECT", savedProject.getId(),
                                 java.util.Map.of("name", savedProject.getName(), "ticketPrefix",
-                                                savedProject.getTicketPrefix()));
+                                                savedProject.getTicketPrefix(), "projectAdminIds",
+                                                projectAdminIds.toString()));
 
                 return toResponse(savedProject);
         }
@@ -260,7 +283,7 @@ public class ProjectService {
 
                 Project project = getProjectEntityById(id);
 
-                projectAccessService.requireManager(project);
+                projectAccessService.requireProjectAdministration(project);
 
                 if (project.getArchivedAt() != null
                                 && !isAdmin(SecurityContextHolder.getContext().getAuthentication())) {
@@ -268,11 +291,10 @@ public class ProjectService {
                 }
 
                 if (!isAdmin(SecurityContextHolder.getContext().getAuthentication())
-                                && !project.getOwner().getId().equals(currentUserService.getCurrentUserId())
                                 && request.getOwnerId() != null
                                 && !project.getOwner().getId().equals(request.getOwnerId())) {
-                        throw new RuntimeException(
-                                        "Only the system ADMIN or project owner can change project ownership");
+                        throw new org.springframework.security.access.AccessDeniedException(
+                                        "Only the System Admin can change project ownership");
                 }
 
                 String normalizedName = request.getName().trim();
@@ -296,7 +318,22 @@ public class ProjectService {
                                                         + normalizedPrefix);
                 }
 
+                if (!isAdmin(SecurityContextHolder.getContext().getAuthentication())) {
+                        throw new org.springframework.security.access.AccessDeniedException(
+                                        "Only the System Admin can create projects");
+                }
+
                 User owner = getUserById(request.getOwnerId());
+                java.util.List<Long> projectAdminIds = request.getProjectAdminIds() == null
+                                ? java.util.List.of(owner.getId())
+                                : request.getProjectAdminIds().stream().distinct().toList();
+
+                if (projectAdminIds.isEmpty() || projectAdminIds.size() > 2) {
+                        throw new IllegalArgumentException("A project must have 1 or 2 Project Admins");
+                }
+                if (!projectAdminIds.contains(owner.getId())) {
+                        throw new IllegalArgumentException("Project owner must also be a Project Admin");
+                }
 
                 ProjectStatus status = getStatusById(request.getStatusId());
 
@@ -334,7 +371,7 @@ public class ProjectService {
 
                 Project project = getProjectEntityById(id);
 
-                projectAccessService.requireManager(project);
+                projectAccessService.requireSystemAdmin();
 
                 if (project.getArchivedAt() != null) {
                         throw new RuntimeException("Unarchive the project before deleting it");
@@ -357,7 +394,7 @@ public class ProjectService {
 
                 Project project = getProjectEntityById(id);
 
-                projectAccessService.requireManager(project);
+                projectAccessService.requireSystemAdmin();
 
                 project.setDeletedAt(null);
 
@@ -376,7 +413,7 @@ public class ProjectService {
 
                 Project project = getProjectEntityById(id);
 
-                projectAccessService.requireManager(project);
+                projectAccessService.requireSystemAdmin();
 
                 projectRepository.delete(project);
         }

@@ -1,5 +1,7 @@
 package com.projectmanagement.app.project;
 
+import java.util.List;
+
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
@@ -26,6 +28,10 @@ public class ProjectRequest {
     @NotNull(message = "Owner ID is required")
     @Positive(message = "Owner ID must be greater than zero")
     private Long ownerId;
+
+    /** Project Admin memberships to create with the project. 1-2 are allowed. */
+    @Size(min = 1, max = 2, message = "Select between 1 and 2 Project Admins")
+    private List<@Positive Long> projectAdminIds;
 
     @NotNull(message = "Status ID is required")
     @Positive(message = "Status ID must be greater than zero")

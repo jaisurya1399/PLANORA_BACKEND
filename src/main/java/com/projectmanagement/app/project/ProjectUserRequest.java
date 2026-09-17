@@ -26,7 +26,10 @@ public class ProjectUserRequest {
     @NotNull
     private ProjectRole role;
 
-    /** Required only when role == MEMBER. */
+    /**
+     * Legacy compatibility field. New memberships use TEAM_LEAD or DEVELOPER
+     * directly.
+     */
     private MemberResponsibility responsibilityRole;
 
     private Boolean availabilitySelfUpdateOpen;

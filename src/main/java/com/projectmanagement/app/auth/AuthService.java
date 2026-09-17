@@ -273,7 +273,10 @@ public class AuthService {
     }
 
     private String getRole(Long userId) {
-        return userRepository.findRoleNameByUserId(userId).map(String::toUpperCase).orElse(null);
+        boolean isAdmin = userRoleRepository.findUserRolesWithPermissions(userId).stream()
+                .anyMatch(ur -> ur != null && ur.getRole() != null
+                        && "ADMIN".equalsIgnoreCase(ur.getRole().getName()));
+        return isAdmin ? "ADMIN" : "MEMBER";
     }
 
     private List<String> getPermissions(Long userId) {
@@ -294,9 +297,27 @@ public class AuthService {
         return ProjectMembershipResponse.builder()
                 .projectId(membership.getProject() != null ? membership.getProject().getId() : null)
                 .projectName(membership.getProject() != null ? membership.getProject().getName() : null)
-                .role(membership.getRole())
+                .role(normalizeProjectRole(membership.getRole(), membership.getResponsibilityRole()))
                 .responsibilityRole(membership.getResponsibilityRole())
+                .permissions(com.projectmanagement.app.project.ProjectPermissionCatalog.forRole(
+                        normalizeProjectRole(membership.getRole(), membership.getResponsibilityRole())))
                 .build();
+    }
+
+    private String normalizeProjectRole(String role, String responsibility) {
+        if (role == null || role.isBlank())
+            return null;
+        String normalized = role.trim().toUpperCase(java.util.Locale.ROOT);
+        if ("MEMBER".equals(normalized)) {
+            return "TEAM_LEAD".equalsIgnoreCase(responsibility)
+                    ? "TEAM_LEAD"
+                    : "DEVELOPER";
+        }
+        if ("ADMIN".equals(normalized) || "OWNER".equals(normalized))
+            return "PROJECT_ADMIN";
+        if ("TEAMLEAD".equals(normalized))
+            return "TEAM_LEAD";
+        return normalized;
     }
 
     private String createRefreshToken(User user, String ip, String userAgent) {

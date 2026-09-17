@@ -10,6 +10,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import com.projectmanagement.app.project.Project;
+import com.projectmanagement.app.project.ProjectAccessService;
 import com.projectmanagement.app.project.ProjectRepository;
 import com.projectmanagement.app.ticket.Ticket;
 import com.projectmanagement.app.ticket.TicketRepository;
@@ -23,6 +24,7 @@ public class MilestoneService {
 
         private final MilestoneRepository milestoneRepository;
         private final ProjectRepository projectRepository;
+        private final ProjectAccessService projectAccessService;
         private final TicketRepository ticketRepository;
 
         // =========================================================
@@ -34,6 +36,7 @@ public class MilestoneService {
                         MilestoneRequest request) {
 
                 Project project = getProject(projectId);
+                projectAccessService.requireManager(project);
 
                 validateDates(
                                 request.getStartDate(),
@@ -84,6 +87,7 @@ public class MilestoneService {
                 Milestone milestone = getMilestone(
                                 projectId,
                                 milestoneId);
+                projectAccessService.requireManager(milestone.getProject());
 
                 validateDates(
                                 request.getStartDate(),

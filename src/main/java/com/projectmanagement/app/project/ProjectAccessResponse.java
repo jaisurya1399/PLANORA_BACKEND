@@ -13,10 +13,9 @@ import lombok.Setter;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class ProjectMembershipResponse {
+public class ProjectAccessResponse {
     private Long projectId;
     private String projectName;
     private String role;
-    private String responsibilityRole;
     private List<String> permissions;
 }

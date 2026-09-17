@@ -127,6 +127,7 @@ public class SprintService {
 
                 return sprintRepository.findAll()
                                 .stream()
+                                .filter(s -> projectAccessService.canView(s.getProject()))
                                 .map(this::toResponse)
                                 .toList();
         }
@@ -139,6 +140,7 @@ public class SprintService {
         public SprintResponse getById(Long id) {
 
                 Sprint sprint = getSprint(id);
+                projectAccessService.requireView(sprint.getProject());
 
                 return toResponse(sprint);
         }
@@ -150,9 +152,8 @@ public class SprintService {
         @Transactional(readOnly = true)
         public List<SprintResponse> getByProject(Long projectId) {
 
-                if (!projectRepository.existsById(projectId)) {
-                        throw new RuntimeException("Project not found");
-                }
+                Project project = getProject(projectId);
+                projectAccessService.requireView(project);
 
                 return sprintRepository
                                 .findByProjectIdOrderByCreatedAtDesc(projectId)
@@ -625,7 +626,8 @@ public class SprintService {
         public List<TicketResponse> getSprintTickets(
                         Long sprintId) {
 
-                getSprint(sprintId);
+                Sprint sprint = getSprint(sprintId);
+                projectAccessService.requireView(sprint.getProject());
 
                 return ticketRepository
                                 .findBySprintIdOrderByOrderAsc(sprintId)
@@ -643,10 +645,8 @@ public class SprintService {
         public List<TicketResponse> getBacklog(
                         Long projectId) {
 
-                if (!projectRepository.existsById(projectId)) {
-                        throw new RuntimeException(
-                                        "Project not found");
-                }
+                Project project = getProject(projectId);
+                projectAccessService.requireView(project);
 
                 return ticketRepository
                                 .findByProjectIdAndSprintIsNullOrderByOrderAsc(
@@ -2042,7 +2042,7 @@ public class SprintService {
                                         "Authenticated user not found");
                 }
 
-                projectAccessService.requireEditor(
+                projectAccessService.requireSprintManage(
                                 getProject(projectId));
         }
 

@@ -16,6 +16,7 @@ import org.springframework.transaction.annotation.Transactional;
 import com.projectmanagement.app.milestone.Milestone;
 import com.projectmanagement.app.milestone.MilestoneRepository;
 import com.projectmanagement.app.project.Project;
+import com.projectmanagement.app.project.ProjectAccessService;
 import com.projectmanagement.app.project.ProjectRepository;
 import com.projectmanagement.app.ticket.Ticket;
 import com.projectmanagement.app.ticket.TicketRepository;
@@ -27,16 +28,19 @@ public class EpicService {
 
         private final EpicRepository epicRepository;
         private final ProjectRepository projectRepository;
+        private final ProjectAccessService projectAccessService;
         private final TicketRepository ticketRepository;
         private final MilestoneRepository milestoneRepository;
 
         public EpicService(
                         EpicRepository epicRepository,
                         ProjectRepository projectRepository,
+                        ProjectAccessService projectAccessService,
                         TicketRepository ticketRepository,
                         MilestoneRepository milestoneRepository) {
                 this.epicRepository = epicRepository;
                 this.projectRepository = projectRepository;
+                this.projectAccessService = projectAccessService;
                 this.ticketRepository = ticketRepository;
                 this.milestoneRepository = milestoneRepository;
         }
@@ -77,6 +81,7 @@ public class EpicService {
                 Epic epic = epicRepository.findById(id)
                                 .orElseThrow(() -> new RuntimeException(
                                                 "Epic not found with id: " + id));
+                projectAccessService.requireProjectMember(epic.getProject());
 
                 return toResponse(epic);
         }
@@ -89,7 +94,8 @@ public class EpicService {
         public List<EpicResponse> getEpicsByProject(
                         Long projectId) {
 
-                validateProject(projectId);
+                Project project = getProject(projectId);
+                projectAccessService.requireProjectMember(project);
 
                 return epicRepository
                                 .findByProjectId(projectId)
@@ -106,7 +112,8 @@ public class EpicService {
         public List<EpicResponse> getActiveEpicsByProject(
                         Long projectId) {
 
-                validateProject(projectId);
+                Project project = getProject(projectId);
+                projectAccessService.requireProjectMember(project);
 
                 return epicRepository
                                 .findByProjectIdAndDeletedAtIsNull(projectId)
@@ -123,7 +130,8 @@ public class EpicService {
         public List<EpicResponse> getRootEpicsByProject(
                         Long projectId) {
 
-                validateProject(projectId);
+                Project project = getProject(projectId);
+                projectAccessService.requireProjectMember(project);
 
                 return epicRepository
                                 .findByProjectIdAndParentIsNull(projectId)
@@ -140,7 +148,9 @@ public class EpicService {
         public List<EpicResponse> getChildEpics(
                         Long parentId) {
 
-                validateEpic(parentId);
+                Epic parent = epicRepository.findById(parentId)
+                                .orElseThrow(() -> new RuntimeException("Epic not found with id: " + parentId));
+                projectAccessService.requireProjectMember(parent.getProject());
 
                 return epicRepository
                                 .findByParentId(parentId)
@@ -157,7 +167,9 @@ public class EpicService {
         public List<EpicResponse> getActiveChildEpics(
                         Long parentId) {
 
-                validateEpic(parentId);
+                Epic parent = epicRepository.findById(parentId)
+                                .orElseThrow(() -> new RuntimeException("Epic not found with id: " + parentId));
+                projectAccessService.requireProjectMember(parent.getProject());
 
                 return epicRepository
                                 .findByParentIdAndDeletedAtIsNull(parentId)
@@ -175,7 +187,8 @@ public class EpicService {
                         Long projectId,
                         Long parentId) {
 
-                validateProject(projectId);
+                Project project = getProject(projectId);
+                projectAccessService.requireProjectMember(project);
                 validateEpic(parentId);
 
                 return epicRepository
@@ -196,7 +209,8 @@ public class EpicService {
                         Long projectId,
                         String name) {
 
-                validateProject(projectId);
+                Project project = getProject(projectId);
+                projectAccessService.requireProjectMember(project);
 
                 Epic epic = epicRepository
                                 .findByProjectIdAndNameAndDeletedAtIsNull(
@@ -231,6 +245,7 @@ public class EpicService {
                                 .orElseThrow(() -> new RuntimeException(
                                                 "Project not found with id: "
                                                                 + request.getProjectId()));
+                projectAccessService.requireManager(project);
 
                 Milestone milestone = getValidMilestone(
                                 request.getMilestoneId(),
@@ -287,6 +302,8 @@ public class EpicService {
                                 .orElseThrow(() -> new RuntimeException(
                                                 "Project not found with id: "
                                                                 + request.getProjectId()));
+                projectAccessService.requireManager(epic.getProject());
+                projectAccessService.requireManager(project);
 
                 Milestone milestone = getValidMilestone(
                                 request.getMilestoneId(),
@@ -322,6 +339,7 @@ public class EpicService {
                 Epic epic = epicRepository.findById(id)
                                 .orElseThrow(() -> new RuntimeException(
                                                 "Epic not found with id: " + id));
+                projectAccessService.requireManager(epic.getProject());
 
                 epic.setDeletedAt(
                                 LocalDateTime.now());
@@ -338,6 +356,7 @@ public class EpicService {
                 Epic epic = epicRepository.findById(id)
                                 .orElseThrow(() -> new RuntimeException(
                                                 "Epic not found with id: " + id));
+                projectAccessService.requireManager(epic.getProject());
 
                 epic.setDeletedAt(null);
 
@@ -350,6 +369,10 @@ public class EpicService {
         // =========================================================
 
         public void permanentlyDeleteEpic(Long id) {
+
+                Epic epic = epicRepository.findById(id)
+                                .orElseThrow(() -> new RuntimeException("Epic not found with id: " + id));
+                projectAccessService.requireManager(epic.getProject());
 
                 if (!epicRepository.existsById(id)) {
 
@@ -368,7 +391,8 @@ public class EpicService {
         public long countEpicsByProject(
                         Long projectId) {
 
-                validateProject(projectId);
+                Project project = getProject(projectId);
+                projectAccessService.requireProjectMember(project);
 
                 return epicRepository.countByProjectId(projectId);
         }
@@ -377,7 +401,9 @@ public class EpicService {
         public long countChildEpics(
                         Long parentId) {
 
-                validateEpic(parentId);
+                Epic parent = epicRepository.findById(parentId)
+                                .orElseThrow(() -> new RuntimeException("Epic not found with id: " + parentId));
+                projectAccessService.requireProjectMember(parent.getProject());
 
                 return epicRepository.countByParentId(parentId);
         }
@@ -636,6 +662,12 @@ public class EpicService {
                 }
 
                 return milestone;
+        }
+
+        private Project getProject(Long projectId) {
+                return projectRepository.findById(projectId)
+                                .orElseThrow(() -> new RuntimeException(
+                                                "Project not found with id: " + projectId));
         }
 
         private void validateProject(Long projectId) {

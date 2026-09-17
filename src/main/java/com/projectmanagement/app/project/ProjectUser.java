@@ -61,15 +61,8 @@ public class ProjectUser {
     private String role;
 
     /**
-     * Responsibility is applicable only when role = MEMBER.
-     *
-     * Examples:
-     * DEVELOPER
-     * TESTER
-     * TEAM_LEAD
-     * SCRUM_MASTER
-     * PRODUCT_OWNER
-     * BUSINESS_ANALYST
+     * Legacy responsibility field retained for compatibility with pre-RBAC data.
+     * New authorization uses the project role directly.
      */
     @Column(name = "responsibility_role", length = 40)
     private String responsibilityRole;
@@ -131,24 +124,12 @@ public class ProjectUser {
             role = role.trim().toUpperCase();
         }
 
-        /*
-         * Only MEMBER can have a responsibility.
-         */
+        // Project roles are first-class roles. Responsibility is retained only
+        // for legacy MEMBER rows and is not used for authorization.
         if (!ProjectRole.MEMBER.name().equals(role)) {
-
             responsibilityRole = null;
-
-        } else {
-
-            if (responsibilityRole == null
-                    || responsibilityRole.isBlank()) {
-
-                responsibilityRole = MemberResponsibility.DEVELOPER.name();
-
-            } else {
-
-                responsibilityRole = responsibilityRole.trim().toUpperCase();
-            }
+        } else if (responsibilityRole != null && !responsibilityRole.isBlank()) {
+            responsibilityRole = responsibilityRole.trim().toUpperCase();
         }
 
         /*

@@ -12,7 +12,8 @@ import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import com.projectmanagement.app.role.Role;
+import com.projectmanagement.app.project.ProjectUser;
+import com.projectmanagement.app.project.ProjectUserRepository;
 import com.projectmanagement.app.rolepermission.RolePermission;
 import com.projectmanagement.app.user.User;
 import com.projectmanagement.app.user.UserRepository;
@@ -24,13 +25,16 @@ public class CustomUserDetailsService implements UserDetailsService {
 
         private final UserRepository userRepository;
         private final UserRoleRepository userRoleRepository;
+        private final ProjectUserRepository projectUserRepository;
 
         public CustomUserDetailsService(
                         UserRepository userRepository,
-                        UserRoleRepository userRoleRepository) {
+                        UserRoleRepository userRoleRepository,
+                        ProjectUserRepository projectUserRepository) {
 
                 this.userRepository = userRepository;
                 this.userRoleRepository = userRoleRepository;
+                this.projectUserRepository = projectUserRepository;
         }
 
         @Override
@@ -54,99 +58,76 @@ public class CustomUserDetailsService implements UserDetailsService {
                 Set<GrantedAuthority> authorities = new HashSet<>();
 
                 // ------------------------------------------------------------
-                // Load user roles with permissions
+                // GLOBAL role: only ADMIN is a real system role.
+                // Every non-admin user is MEMBER. Project roles are evaluated
+                // from project_users and must never become global roles.
                 // ------------------------------------------------------------
-
-                List<UserRole> userRoles = userRoleRepository.findUserRolesWithPermissions(
-                                user.getId());
+                List<UserRole> userRoles = userRoleRepository.findUserRolesWithPermissions(user.getId());
+                boolean systemAdmin = false;
 
                 for (UserRole userRole : userRoles) {
-
-                        if (userRole == null) {
+                        if (userRole == null || userRole.getRole() == null)
                                 continue;
-                        }
-
-                        Role role = userRole.getRole();
-
-                        if (role == null) {
-                                continue;
-                        }
-
-                        // --------------------------------------------------------
-                        // Add ROLE_xxx authority
-                        // Example: ADMIN -> ROLE_ADMIN
-                        // --------------------------------------------------------
-
-                        String roleName = role.getName();
-
-                        if (roleName != null && !roleName.isBlank()) {
-
-                                authorities.add(
-                                                new SimpleGrantedAuthority(
-                                                                "ROLE_" +
-                                                                                roleName.trim().toUpperCase()));
-                        }
-
-                        // --------------------------------------------------------
-                        // Add permissions
-                        // --------------------------------------------------------
-
-                        Set<RolePermission> rolePermissions = role.getRolePermissions();
-
-                        if (rolePermissions == null ||
-                                        rolePermissions.isEmpty()) {
-                                continue;
-                        }
-
-                        for (RolePermission rolePermission : rolePermissions) {
-
-                                if (rolePermission == null) {
-                                        continue;
-                                }
-
-                                if (rolePermission.getPermission() == null) {
-                                        continue;
-                                }
-
-                                String permissionName = rolePermission
-                                                .getPermission()
-                                                .getName();
-
-                                if (permissionName == null ||
-                                                permissionName.isBlank()) {
-                                        continue;
-                                }
-
-                                authorities.add(
-                                                new SimpleGrantedAuthority(
-                                                                permissionName.trim()));
+                        String roleName = userRole.getRole().getName();
+                        if (roleName != null && "ADMIN".equalsIgnoreCase(roleName.trim())) {
+                                systemAdmin = true;
+                                break;
                         }
                 }
 
-                // ------------------------------------------------------------
-                // Fallback role
-                // Only add USER role when user has no role at all
-                // ------------------------------------------------------------
-
-                boolean hasRole = authorities.stream()
-                                .anyMatch(authority -> authority.getAuthority()
-                                                .startsWith("ROLE_"));
-
-                if (!hasRole) {
-                        authorities.add(
-                                        new SimpleGrantedAuthority("ROLE_USER"));
+                if (systemAdmin) {
+                        authorities.add(new SimpleGrantedAuthority("ROLE_ADMIN"));
+                        addGlobalRolePermissions(authorities, userRoles, "ADMIN");
+                } else {
+                        authorities.add(new SimpleGrantedAuthority("ROLE_MEMBER"));
                 }
 
                 // ------------------------------------------------------------
-                // Build Spring Security UserDetails
+                // PROJECT permissions: expose the UNION only as Spring
+                // authorities so method security can authenticate MEMBER users.
+                // Actual project access is still enforced in ProjectAccessService
+                // using the requested project's project_users membership.
                 // ------------------------------------------------------------
+                if (!systemAdmin) {
+                        projectUserRepository.findByUserId(user.getId()).stream()
+                                        .map(ProjectUser::getRole)
+                                        .map(this::projectRolePermissions)
+                                        .flatMap(Set::stream)
+                                        .filter(p -> p != null && !p.isBlank())
+                                        .forEach(p -> authorities.add(new SimpleGrantedAuthority(p)));
+                }
 
+                return buildUserDetails(user, authorities);
+        }
+
+        private void addGlobalRolePermissions(Set<GrantedAuthority> authorities, List<UserRole> userRoles,
+                        String roleName) {
+                for (UserRole userRole : userRoles) {
+                        if (userRole == null || userRole.getRole() == null)
+                                continue;
+                        if (!roleName.equalsIgnoreCase(String.valueOf(userRole.getRole().getName())))
+                                continue;
+                        Set<RolePermission> rolePermissions = userRole.getRole().getRolePermissions();
+                        if (rolePermissions == null)
+                                continue;
+                        for (RolePermission rp : rolePermissions) {
+                                if (rp != null && rp.getPermission() != null && rp.getPermission().getName() != null) {
+                                        String permission = rp.getPermission().getName().trim();
+                                        if (!permission.isBlank())
+                                                authorities.add(new SimpleGrantedAuthority(permission));
+                                }
+                        }
+                }
+        }
+
+        private Set<String> projectRolePermissions(String role) {
+                return com.projectmanagement.app.project.ProjectPermissionCatalog.authoritiesForRole(role);
+        }
+
+        private UserDetails buildUserDetails(User user, Set<GrantedAuthority> authorities) {
                 return org.springframework.security.core.userdetails.User
                                 .withUsername(user.getEmail())
-                                .password(
-                                                user.getPassword() != null
-                                                                ? user.getPassword()
-                                                                : "")
+                                .password(user.getPassword() != null ? user.getPassword() : "")
                                 .authorities(authorities)
                                 .accountExpired(false)
                                 .accountLocked(false)
@@ -154,4 +135,5 @@ public class CustomUserDetailsService implements UserDetailsService {
                                 .disabled(false)
                                 .build();
         }
+
 }

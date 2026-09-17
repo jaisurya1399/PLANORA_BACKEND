@@ -15,6 +15,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import com.projectmanagement.app.project.Project;
+import com.projectmanagement.app.project.ProjectAccessService;
 import com.projectmanagement.app.project.ProjectRepository;
 import com.projectmanagement.app.ticket.Ticket;
 import com.projectmanagement.app.ticket.TicketRepository;
@@ -28,22 +29,27 @@ import lombok.RequiredArgsConstructor;
 public class ReleaseVersionService {
     private final ReleaseVersionRepository releaseRepository;
     private final ProjectRepository projectRepository;
+    private final ProjectAccessService projectAccessService;
     private final TicketRepository ticketRepository;
 
     @Transactional(readOnly = true)
     public List<ReleaseVersionResponse> list(Long projectId) {
-        getProject(projectId);
+        Project project = getProject(projectId);
+        projectAccessService.requireProjectMember(project);
         return releaseRepository.findByProjectIdOrderByReleaseDateAscVersionAsc(projectId).stream()
                 .map(this::toResponse).toList();
     }
 
     @Transactional(readOnly = true)
     public ReleaseVersionResponse get(Long projectId, Long id) {
-        return toResponse(getRelease(projectId, id));
+        ReleaseVersion x = getRelease(projectId, id);
+        projectAccessService.requireProjectMember(x.getProject());
+        return toResponse(x);
     }
 
     public ReleaseVersionResponse create(Long projectId, ReleaseVersionRequest r) {
         Project p = getProject(projectId);
+        projectAccessService.requireManager(p);
         validateDates(r.getStartDate(), r.getReleaseDate());
         String version = norm(r.getVersion());
         if (releaseRepository.existsByProjectIdAndVersionIgnoreCase(projectId, version))
@@ -57,6 +63,7 @@ public class ReleaseVersionService {
 
     public ReleaseVersionResponse update(Long projectId, Long id, ReleaseVersionRequest r) {
         ReleaseVersion x = getRelease(projectId, id);
+        projectAccessService.requireManager(x.getProject());
         validateDates(r.getStartDate(), r.getReleaseDate());
         String version = norm(r.getVersion());
         if (releaseRepository.existsByProjectIdAndVersionIgnoreCaseAndIdNot(projectId, version, id))
@@ -73,13 +80,16 @@ public class ReleaseVersionService {
     }
 
     public void delete(Long projectId, Long id) {
-        releaseRepository.delete(getRelease(projectId, id));
+        ReleaseVersion x = getRelease(projectId, id);
+        projectAccessService.requireManager(x.getProject());
+        releaseRepository.delete(x);
     }
 
     public ReleaseVersionResponse updateStatus(Long projectId, Long id, ReleaseStatus status) {
         if (status == null)
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Status is required");
         ReleaseVersion x = getRelease(projectId, id);
+        projectAccessService.requireManager(x.getProject());
         x.setStatus(status);
         return toResponse(x);
     }
@@ -87,6 +97,7 @@ public class ReleaseVersionService {
     @Transactional(readOnly = true)
     public ReleaseVersionProgressResponse progress(Long projectId, Long id) {
         ReleaseVersion x = getRelease(projectId, id);
+        projectAccessService.requireProjectMember(x.getProject());
         List<Ticket> ts = releaseRepository.findTickets(id);
         BigDecimal total = sum(ts, false), completed = sum(ts, true);
         long done = ts.stream().filter(t -> category(t) == TicketStatusCategory.DONE).count();
@@ -101,6 +112,7 @@ public class ReleaseVersionService {
     @Transactional(readOnly = true)
     public ReleaseBurndownResponse burndown(Long projectId, Long id) {
         ReleaseVersion x = getRelease(projectId, id);
+        projectAccessService.requireProjectMember(x.getProject());
         List<Ticket> ts = releaseRepository.findTickets(id);
         LocalDate start = x.getStartDate();
         if (start == null)
@@ -131,7 +143,8 @@ public class ReleaseVersionService {
     }
 
     public List<ReleaseTicketResponse> tickets(Long projectId, Long id) {
-        getRelease(projectId, id);
+        ReleaseVersion x = getRelease(projectId, id);
+        projectAccessService.requireProjectMember(x.getProject());
         return releaseRepository
                 .findTickets(id).stream().map(
                         t -> ReleaseTicketResponse.builder().id(t.getId()).code(t.getCode()).name(t.getName())

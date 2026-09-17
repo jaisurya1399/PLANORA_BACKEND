@@ -129,6 +129,16 @@ public class ProjectController {
         }
 
         // =========================================================
+        // CURRENT PROJECT ACCESS
+        // =========================================================
+
+        @GetMapping("/{id}/access")
+        @PreAuthorize("isAuthenticated()")
+        public ResponseEntity<ProjectAccessResponse> getCurrentProjectAccess(@PathVariable Long id) {
+                return ResponseEntity.ok(projectService.getCurrentProjectAccess(id));
+        }
+
+        // =========================================================
         // CREATE PROJECT
         // =========================================================
 

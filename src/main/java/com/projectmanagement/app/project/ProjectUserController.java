@@ -33,7 +33,7 @@ public class ProjectUserController {
         // ---------------------------------------------------------
 
         @GetMapping
-        @PreAuthorize("hasAuthority('project_user.view') or hasRole('ADMIN')")
+        @PreAuthorize("hasRole('ADMIN')")
         public ResponseEntity<List<ProjectUserResponse>> getAllProjectUsers() {
 
                 return ResponseEntity.ok(
@@ -45,7 +45,7 @@ public class ProjectUserController {
         // ---------------------------------------------------------
 
         @GetMapping("/{id}")
-        @PreAuthorize("hasAuthority('project_user.view') or hasRole('ADMIN')")
+        @PreAuthorize("isAuthenticated()")
         public ResponseEntity<ProjectUserResponse> getProjectUserById(
                         @PathVariable Long id) {
 
@@ -71,7 +71,7 @@ public class ProjectUserController {
         // ---------------------------------------------------------
 
         @GetMapping("/user/{userId}")
-        @PreAuthorize("hasAuthority('project_user.view') or hasRole('ADMIN')")
+        @PreAuthorize("hasRole('ADMIN')")
         public ResponseEntity<List<ProjectUserResponse>> getProjectUsersByUser(
                         @PathVariable Long userId) {
 
@@ -193,7 +193,7 @@ public class ProjectUserController {
         // ---------------------------------------------------------
 
         @DeleteMapping("/user/{userId}")
-        @PreAuthorize("isAuthenticated()")
+        @PreAuthorize("hasRole('ADMIN')")
         public ResponseEntity<Void> deleteProjectUsersByUser(
                         @PathVariable Long userId) {
 
@@ -220,7 +220,7 @@ public class ProjectUserController {
         // ---------------------------------------------------------
 
         @GetMapping("/user/{userId}/count")
-        @PreAuthorize("hasAuthority('project_user.view') or hasRole('ADMIN')")
+        @PreAuthorize("hasRole('ADMIN')")
         public ResponseEntity<Long> countProjectsByUser(
                         @PathVariable Long userId) {
 

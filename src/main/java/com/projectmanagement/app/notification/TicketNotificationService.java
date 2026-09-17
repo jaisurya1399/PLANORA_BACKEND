@@ -132,8 +132,8 @@ public class TicketNotificationService {
         /**
          * Persists an in-app notification when allowed by both the project's
          * notification scheme and the recipient's personal preference.
-         * The domain event is published independently so email/web-push can
-         * still work when in-app notifications are disabled.
+         * The domain event is published for non-email notification channels
+         * such as in-app notifications and web push.
          */
         private void save(User recipient, String type, String recipientType, Ticket ticket, String message) {
                 NotificationSchemeRule rule = findRule(ticket, type, recipientType);
@@ -141,7 +141,6 @@ public class TicketNotificationService {
                 // If a project has configured rules for this event, obey them.
                 // If no rule exists, preserve the default behavior for backwards compatibility.
                 boolean schemeInApp = rule == null || rule.isInAppEnabled();
-                boolean schemeEmail = rule == null || rule.isEmailEnabled();
 
                 boolean inAppEnabled = schemeInApp
                                 && preferenceService.isInAppEnabled(recipient.getId(), type);
@@ -157,14 +156,10 @@ public class TicketNotificationService {
 
                 }
 
-                // The event is consumed by email and push listeners after commit.
-                // The listener itself checks the personal preference; the event
-                // remains available even when in-app is disabled.
-                if (schemeEmail || inAppEnabled) {
-                        eventPublisher.publishEvent(new TicketNotificationCreatedEvent(
-                                        recipient, type, ticket.getId(), ticket.getCode(), message,
-                                        schemeEmail, inAppEnabled));
-                }
+                // Publish the domain event for non-email notification channels.
+                // Web Push can continue to work independently of in-app preferences.
+                eventPublisher.publishEvent(new TicketNotificationCreatedEvent(
+                                recipient, type, ticket.getId(), ticket.getCode(), message));
         }
 
         private String buildData(Ticket ticket, String message) {

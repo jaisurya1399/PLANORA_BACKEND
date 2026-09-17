@@ -10,6 +10,8 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.projectmanagement.app.user.UserResponse;
+
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 
@@ -18,6 +20,12 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public class ChatController {
     private final ChatService service;
+
+    @GetMapping("/direct-users/{projectId}")
+    @PreAuthorize("isAuthenticated()")
+    public List<UserResponse> directUsers(@PathVariable Long projectId) {
+        return service.directUsers(projectId);
+    }
 
     @GetMapping("/direct/{userId}")
     @PreAuthorize("isAuthenticated()")
