@@ -19,8 +19,6 @@ public class FcmTicketNotificationListener {
 
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT, fallbackExecution = true)
     public void deliver(TicketNotificationCreatedEvent event) {
-        if (!event.pushEnabled())
-            return;
         fcmService.send(event);
     }
 }
